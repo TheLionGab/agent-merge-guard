@@ -1,0 +1,11 @@
+{
+  "name": "agent-workflow-gates",
+  "version": "0.1.0",
+  "description": "Pure decision gates for multi-agent workflows: merge gate (allowlist, single-SHA, CI) and untrusted-data marking",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=22.12" },
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\""
+  }
+}
