@@ -4,9 +4,14 @@ import { caminhoOk, comandoMerge, confirmarMerge, decidirMerge } from '../src/me
 
 const SHA = 'a'.repeat(40);
 const ALLOW = [/^docs\/BACKLOG\.md$/, /^docs\/relatorios\/2026-10-15-melhorias\.md$/];
-const OPTS = { branchEsperada: 'bot/melhorias-2026-10-15', allowlist: ALLOW, merge: true };
+const REPO = 'owner/repo';
+const OPTS = { repo: REPO, pr: 12, autorEsperado: 'meu-bot', branchEsperada: 'bot/melhorias-2026-10-15', allowlist: ALLOW, merge: true };
 
 const bom = (extra = {}) => ({
+  repo: REPO,
+  numero: 12,
+  isCrossRepository: false,
+  autor: 'meu-bot',
   estado: 'OPEN',
   headRefName: 'bot/melhorias-2026-10-15',
   baseRefName: 'main',
@@ -119,4 +124,19 @@ test('pós-merge: head diferente do inspecionado é alerta', () => {
   });
   assert.equal(confirmarMerge({ estado: 'MERGED', headRefOid: 'b'.repeat(40) }, SHA).alerta, true);
   assert.equal(confirmarMerge({ estado: 'OPEN', headRefOid: SHA }, SHA).mesclado, false);
+});
+
+test('identidade: fork com a mesma branch, outro repo, outro número e outro autor reprovam', () => {
+  assert.equal(decidirMerge(bom({ isCrossRepository: true }), OPTS).mesclar, false);
+  assert.equal(decidirMerge(bom({ isCrossRepository: undefined }), OPTS).mesclar, false);
+  assert.equal(decidirMerge(bom({ repo: 'atacante/repo' }), OPTS).mesclar, false);
+  assert.equal(decidirMerge(bom({ numero: 13 }), OPTS).mesclar, false);
+  assert.equal(decidirMerge(bom({ autor: 'atacante' }), OPTS).mesclar, false);
+});
+
+test('configuração incompleta do portão nunca mescla', () => {
+  for (const falta of ['repo', 'autorEsperado']) {
+    assert.equal(decidirMerge(bom(), { ...OPTS, [falta]: '' }).mesclar, false, falta);
+  }
+  assert.equal(decidirMerge(bom(), { ...OPTS, pr: 0 }).mesclar, false);
 });

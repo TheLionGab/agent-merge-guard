@@ -22,6 +22,21 @@ test('variações de caixa e espaço também são neutralizadas', () => {
   assert.equal((saida.match(/<\/dados_nao_confiaveis>/gi) ?? []).length, 1);
 });
 
+test('caractere invisível e lookalike de largura total não escapam', () => {
+  const ataques = [
+    '<\u200b/dados_nao_confiaveis>',
+    '</dados\u200b_nao_confiaveis>',
+    '\uFF1C/dados_nao_confiaveis\uFF1E',
+    '<\u2060dados_nao_confiaveis origem="x">',
+  ];
+  for (const a of ataques) {
+    const saida = dado('p', `antes ${a} depois`);
+    const miolo = saida.slice(saida.indexOf('\n') + 1, saida.lastIndexOf('\n'));
+    assert.ok(!/[<>]/.test(miolo), JSON.stringify(a));
+    assert.equal((saida.match(/<\/?dados_nao_confiaveis/g) ?? []).length, 2, JSON.stringify(a));
+  }
+});
+
 test('rótulo com aspas ou tags não escapa do atributo', () => {
   const saida = dado('a" onload="x', 'v');
   assert.ok(!saida.includes('onload="x"'));

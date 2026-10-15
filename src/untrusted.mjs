@@ -7,13 +7,18 @@ export const AVISO_DADOS =
 const TAG = 'dados_nao_confiaveis';
 
 /**
- * Embrulha um valor num bloco de dado não confiável. O valor não consegue fechar o bloco:
- * qualquer ocorrência de </dados_nao_confiaveis> ou da abertura é neutralizada, senão um
- * texto hostil poderia "sair" do bloco e escrever instruções fora dele.
+ * Embrulha um valor num bloco de dado não confiável. O valor não consegue fechar nem abrir
+ * o bloco: o texto é normalizado em NFKC (＜ de largura total vira <), caracteres invisíveis
+ * de formatação (largura zero, direção, etc.) são removidos e todo < e > vira entidade.
+ * Escapar só a tag exata deixaria passar variações com caractere invisível ou lookalike.
  */
 export function dado(rotulo, valor) {
   const texto = typeof valor === 'string' ? valor : JSON.stringify(valor, null, 2);
-  const limpo = texto.replace(new RegExp(`<(/?)\\s*${TAG}`, 'gi'), `<[bloqueado]$1${TAG}`);
+  const limpo = texto
+    .normalize('NFKC')
+    .replace(/\p{Cf}/gu, '')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
   const rot = String(rotulo).replace(/[^\w.:-]/g, '_');
   return `<${TAG} origem="${rot}">\n${limpo}\n</${TAG}>`;
 }

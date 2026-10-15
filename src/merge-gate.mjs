@@ -21,6 +21,10 @@ export function caminhoOk(arquivo, allowlist) {
 /**
  * @typedef {object} Inspecao
  * @property {string} estado OPEN | MERGED | CLOSED
+ * @property {string} repo repo base do PR (nameWithOwner), lido da API
+ * @property {number} numero número do PR, lido da API
+ * @property {boolean} isCrossRepository true se o head vem de um fork
+ * @property {string} autor login de quem abriu o PR
  * @property {string} headRefName
  * @property {string} baseRefName
  * @property {boolean} isDraft
@@ -33,13 +37,20 @@ export function caminhoOk(arquivo, allowlist) {
 
 /**
  * @param {Inspecao | null} insp
- * @param {{ branchEsperada: string, allowlist: RegExp[], merge: boolean }} opts
+ * @param {{ repo: string, pr: number, autorEsperado: string, branchEsperada: string, allowlist: RegExp[], merge: boolean }} opts
  * @returns {{ mesclar: boolean, alerta: boolean, motivo: string, sha?: string }}
  */
-export function decidirMerge(insp, { branchEsperada, allowlist, merge }) {
+export function decidirMerge(insp, { repo, pr, autorEsperado, branchEsperada, allowlist, merge }) {
   const nao = (motivo) => ({ mesclar: false, alerta: false, motivo });
   if (!insp) return nao('inspeção falhou');
-  // O número do PR veio de um agente: confere que é o PR que este fluxo abriu.
+  // O número do PR veio de um agente: confere que é o PR que este fluxo abriu. Nome de branch
+  // sozinho não prova nada (um fork pode ter a mesma), então repo, número, origem e autor também.
+  if (!repo || !autorEsperado || !Number.isInteger(pr) || pr <= 0)
+    return nao('configuração do portão incompleta (repo, pr, autorEsperado)');
+  if (insp.repo !== repo || insp.numero !== pr)
+    return nao(`inspeção de outro PR (${insp.repo}#${insp.numero})`);
+  if (insp.isCrossRepository !== false) return nao('head vem de fork (ou origem não informada)');
+  if (insp.autor !== autorEsperado) return nao(`autor ${insp.autor}, esperado ${autorEsperado}`);
   if (insp.headRefName !== branchEsperada) return nao(`PR de outra branch (${insp.headRefName})`);
   if (insp.estado === 'MERGED')
     return { mesclar: false, alerta: true, motivo: 'ALERTA: mesclado fora do portão, revisar o diff' };

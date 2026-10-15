@@ -5,7 +5,7 @@ Portões de decisão para fluxos com vários agentes de IA, escritos como
 
 English: pure, dependency-free decision gates for multi-agent workflows.
 The agent reads facts; a deterministic script decides. Node 22, no
-dependencies, 18 tests.
+dependencies, 21 tests.
 
 ## A ideia
 
@@ -35,12 +35,14 @@ está no código:
 - `src/untrusted.mjs`
   - `dado(rotulo, valor)`: embrulha texto de fora do fluxo (logs, posts de
     usuário, saída de outro modelo) num bloco marcado como dado, nunca
-    como instrução. O valor não consegue fechar nem reabrir o bloco, em
-    qualquer caixa ou espaçamento.
-- `test/`: 18 testes (`npm test`, Node 22, sem dependências).
+    como instrução. O texto é normalizado (NFKC), caracteres invisíveis são
+    removidos e todo `<` e `>` vira entidade, então o valor não consegue
+    fechar nem abrir o bloco, nem com largura zero ou `＜` de largura total.
+- `test/`: 21 testes (`npm test`, Node 22, sem dependências).
 
 Condições para `mesclar: true`, todas ao mesmo tempo: `merge === true`
-explícito, PR da branch esperada, aberto, base `main`, fora de draft, SHA
+explícito, inspeção do repo e do número esperados, head no próprio repo
+(não de fork), autor esperado, branch esperada, PR aberto, base `main`, fora de draft, SHA
 lido antes e depois idêntico e válido, lista de arquivos completa (a
 paginação bate com `changedFiles`), todo arquivo dentro da allowlist e CI
 `success`.
@@ -63,8 +65,11 @@ Cada achado virou uma regra acima e um teste. Os testes foram validados por
 mutação: tirar o lado antigo da renomeação, a igualdade de SHA, o opt-in do
 merge ou a neutralização do bloco de dado faz pelo menos um teste falhar.
 
-Mudança feita ao extrair: `dado()` aqui neutraliza o fecho do bloco. O
-helper original não fazia isso.
+Mudanças feitas depois de uma revisão automática de segurança do primeiro
+commit: o portão agora confere repo, número, origem (fork não passa) e
+autor, porque nome de branch sozinho não prova identidade; e `dado()`
+escapa todo `<` e `>`, porque neutralizar só a tag exata deixava passar
+caractere invisível. O helper original não fazia isso.
 
 ## Limites
 
