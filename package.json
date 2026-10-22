@@ -1,10 +1,12 @@
 {
-  "name": "agent-workflow-gates",
+  "name": "agent-merge-guard",
   "version": "0.1.0",
-  "description": "Pure decision gates for multi-agent workflows: merge gate (allowlist, single-SHA, CI) and untrusted-data marking",
+  "description": "Deterministic merge guards for agent-created PRs: identity, SHA consistency, path allowlists and untrusted-text boundaries. 21 tests.",
   "type": "module",
   "license": "MIT",
-  "engines": { "node": ">=22.12" },
+  "engines": {
+    "node": ">=22.12"
+  },
   "scripts": {
     "test": "node --test \"test/*.test.mjs\""
   }

@@ -1,83 +1,73 @@
-# agent-workflow-gates
+# Agent Merge Guard
 
-Portões de decisão para fluxos com vários agentes de IA, escritos como
-**funções puras**: sem rede, sem modelo, testáveis uma a uma.
+Dependency-free decision functions for reviewing agent-created pull requests.
+A prompt is not an enforcement boundary: merge eligibility is decided from
+explicit facts, with merge disabled by default.
 
-English: pure, dependency-free decision gates for multi-agent workflows.
-The agent reads facts; a deterministic script decides. Node 22, no
-dependencies, 21 tests.
+**Node.js 22.12+ · JavaScript ESM · 21 tests · MIT**
 
-## A ideia
+## Quick start
 
-Prompt não é limite. Se "não mescle sem revisão" só existe no texto do
-prompt, um agente confuso ou um texto hostil pode contornar. Aqui o limite
-está no código:
+```bash
+git clone https://github.com/TheLionGab/agent-merge-guard.git
+cd agent-merge-guard
+npm test
+```
 
-1. O agente **só lê** e devolve fatos literais (estado do PR, SHA, lista
-   de arquivos, resultado do CI).
-2. Uma função pura (`decidirMerge`) decide, com o merge desligado por
-   padrão.
-3. O merge sai com `--match-head-commit <sha inspecionado>`: se o PR mudou
-   no meio, o `gh` recusa.
-4. Depois do merge, o **estado do PR** decide, não o texto que o agente
-   respondeu (`confirmarMerge`).
+No installation, network access, GitHub account, or model is needed to run tests.
 
-## O que está aqui
+## Architecture
 
-- `src/merge-gate.mjs`
-  - `decidirMerge(inspecao, { branchEsperada, allowlist, merge })`
-  - `caminhoOk`: allowlist de caminhos; renomeação conta pelos dois lados
-    e `..` reprova
-  - `comandoMerge`: monta o comando só com PR inteiro, SHA de 40 hex e
-    `owner/repo` válidos
-  - `confirmarMerge`: alerta se o PR foi mesclado com head diferente do
-    inspecionado
-- `src/untrusted.mjs`
-  - `dado(rotulo, valor)`: embrulha texto de fora do fluxo (logs, posts de
-    usuário, saída de outro modelo) num bloco marcado como dado, nunca
-    como instrução. O texto é normalizado (NFKC), caracteres invisíveis são
-    removidos e todo `<` e `>` vira entidade, então o valor não consegue
-    fechar nem abrir o bloco, nem com largura zero ou `＜` de largura total.
-- `test/`: 21 testes (`npm test`, Node 22, sem dependências).
+```mermaid
+flowchart LR
+    A[External collector: PR identity, files, SHA, CI] --> B[decidirMerge: pure decision]
+    B --> C[Reject with reason]
+    B --> D[Eligible at inspected SHA]
+    D --> E[External executor: match-head-commit]
+    E --> F[confirmarMerge: verify resulting head]
+```
 
-Condições para `mesclar: true`, todas ao mesmo tempo: `merge === true`
-explícito, inspeção do repo e do número esperados, head no próprio repo
-(não de fork), autor esperado, branch esperada, PR aberto, base `main`, fora de draft, SHA
-lido antes e depois idêntico e válido, lista de arquivos completa (a
-paginação bate com `changedFiles`), todo arquivo dentro da allowlist e CI
-`success`.
+The collector and executor are outside this repository. The library provides:
 
-## De onde vem
+- [`decidirMerge`](src/merge-gate.mjs): checks repository, PR number, author,
+  branch, fork origin, state, base, draft status, explicit opt-in, identical
+  before/after SHAs, complete file pagination, path allowlist, and successful CI.
+- `caminhoOk`: checks both sides of a rename and rejects `..` paths.
+- `comandoMerge`: formats a SHA-bound `gh pr merge` command after validating inputs;
+  it does not execute it.
+- `confirmarMerge`: reports a merge whose resulting head differs from the inspected head.
+- [`dado`](src/untrusted.mjs): normalizes untrusted text, removes invisible
+  formatting characters, and escapes angle brackets inside a labeled data block.
 
-Extraído de um workflow multiagente real (descobrir, um cético por achado,
-priorizar, registrar, implementar com crítico cego e PR para humano) que uso
-num app em produção. Aquele repositório é privado e o fluxo é específico do
-produto; aqui está só o núcleo reutilizável. O histórico dele mostra o que
-cada rodada de revisão de segurança achou:
+## Example
 
-- texto de produção entrava cru em prompt de agente com permissão de Bash e
-  de merge, e agentes mesclavam por conta própria;
-- a lista de arquivos do PR não mostrava o lado antigo de uma renomeação;
-- um push entre a leitura do CI, a do SHA e a da lista de arquivos fazia o
-  portão mesclar um head que ninguém inspecionou.
+```js
+import { caminhoOk, comandoMerge } from './src/merge-gate.mjs';
 
-Cada achado virou uma regra acima e um teste. Os testes foram validados por
-mutação: tirar o lado antigo da renomeação, a igualdade de SHA, o opt-in do
-merge ou a neutralização do bloco de dado faz pelo menos um teste falhar.
+caminhoOk({ caminho: 'docs/README.md' }, [/^docs\//]); // true
+caminhoOk({ caminho: 'docs/README.md', anterior: 'src/auth.js' }, [/^docs\//]); // false
+comandoMerge('owner/repo', 12, 'a'.repeat(40));
+// gh pr merge 12 --repo owner/repo --squash --match-head-commit aaaa… (40 hex characters)
+```
 
-Mudanças feitas depois de uma revisão automática de segurança do primeiro
-commit: o portão agora confere repo, número, origem (fork não passa) e
-autor, porque nome de branch sozinho não prova identidade; e `dado()`
-escapa todo `<` e `>`, porque neutralizar só a tag exata deixava passar
-caractere invisível. O helper original não fazia isso.
+See [`test/merge-gate.test.mjs`](test/merge-gate.test.mjs) for a complete inspection fixture.
 
-## Limites
+## Engineering Decisions & Test Strategy
 
-- Não executa agentes nem chama o GitHub: decide a partir da inspeção que
-  você fornece. Quem coleta os fatos precisa ser fiel ao formato.
-- Allowlist é por regex de caminho; escrever uma boa é responsabilidade sua.
-- A marcação de dado reduz injeção de prompt, não a elimina.
+| Incorrect implementation | Decision | Regression evidence |
+| --- | --- | --- |
+| Trust CI while a push changes the inspected head. | Require identical valid SHAs before and after inspection; bind the eventual command to that SHA. | The before/after SHA mismatch test rejects the PR. |
+| Rename a sensitive file into an allowed documentation path. | Apply the allowlist to both old and new paths. | The rename test starts outside the allowlist and must fail. |
+| Accept a fork because its branch name matches. | Verify repository, PR, author, and head origin. | Identity tests reject forks and mismatched identities. |
+| Let hostile text close its data delimiter. | Normalize Unicode and escape every angle bracket. | [`test/untrusted.test.mjs`](test/untrusted.test.mjs) covers zero-width and full-width attacks. |
 
-## Licença
+`npm test` runs all 21 cases offline. CI runs the same suite on Node 22.
+The original project documentation records manual mutation checks; no
+mutation runner is included, so those checks are not claimed as CI coverage.
 
-MIT.
+## Scope and limitations
+
+Extracted from a private agent workflow; this is its reusable decision core.
+It does not collect GitHub facts, run agents, execute commands, or grant permissions.
+Its caller must provide trustworthy, complete observations and a suitable allowlist.
+A data delimiter helps structure a prompt; it does not guarantee resistance to prompt injection.
